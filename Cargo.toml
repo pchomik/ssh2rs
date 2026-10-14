@@ -1,0 +1,16 @@
+[package]
+name = "ssh2rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "ssh2rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ssh2 = "0.9.6"
+thiserror = "2.0.21"
+
+[dependencies.pyo3]
+version = "0.29.3"
+features = ["auto-initialize"]
