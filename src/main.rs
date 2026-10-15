@@ -1,4 +1,5 @@
-use ssh2rs::client::{SSHClient, SSHClientError};
+use ssh2rs::client::SSHClient;
+use ssh2rs::error::SSHClientError;
 
 fn main() -> Result<(), SSHClientError> {
     // Read test credentials
@@ -16,7 +17,7 @@ fn main() -> Result<(), SSHClientError> {
     let mut client = SSHClient::connect(host, port, username, password)?;
 
     match client.check_known_hosts() {
-        Ok(_) | Err(SSHClientError::NoHome | SSHClientError::NoHostKey | SSHClientError::HostUnknown(_) | SSHClientError::NoKnownHostsFile) => {}
+        Ok(_) | Err(SSHClientError::NoHome | SSHClientError::HostUnknown(_)) => {}
         Err(e) => return Err(e),
     };
 
