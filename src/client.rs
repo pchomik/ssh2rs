@@ -42,15 +42,49 @@ pub enum SSHClientError {
     HostKeyCheckFailed(String),
 }
 
+pyo3::create_exception!(ssh2rs, SSHError, PyRuntimeError);
+pyo3::create_exception!(ssh2rs, NotConnected, SSHError);
+pyo3::create_exception!(ssh2rs, PasswordRequired, SSHError);
+pyo3::create_exception!(ssh2rs, AuthenticationRequired, SSHError);
+pyo3::create_exception!(ssh2rs, AuthFailed, SSHError);
+pyo3::create_exception!(ssh2rs, Connect, SSHError);
+pyo3::create_exception!(ssh2rs, Handshake, SSHError);
+pyo3::create_exception!(ssh2rs, SSH2, SSHError);
+pyo3::create_exception!(ssh2rs, Command, SSHError);
+pyo3::create_exception!(ssh2rs, NoHome, SSHError);
+pyo3::create_exception!(ssh2rs, NoKnownHostsFile, SSHError);
+pyo3::create_exception!(ssh2rs, NoHostKey, SSHError);
+pyo3::create_exception!(ssh2rs, HostKeyChanged, SSHError);
+pyo3::create_exception!(ssh2rs, HostUnknown, SSHError);
+pyo3::create_exception!(ssh2rs, HostKeyCheckFailed, SSHError);
+
 impl From<SSHClientError> for PyErr {
     fn from(err: SSHClientError) -> PyErr {
-        PyRuntimeError::new_err(err.to_string())
+        let msg = err.to_string();
+        match err {
+            SSHClientError::NotConnected => NotConnected::new_err(msg),
+            SSHClientError::PasswordRequired => PasswordRequired::new_err(msg),
+            SSHClientError::AuthenticationRequired => AuthenticationRequired::new_err(msg),
+            SSHClientError::AuthFailed { .. } => AuthFailed::new_err(msg),
+            SSHClientError::Connect { .. } => Connect::new_err(msg),
+            SSHClientError::Handshake { .. } => Handshake::new_err(msg),
+            SSHClientError::SSH2 { .. } => SSH2::new_err(msg),
+            SSHClientError::Command { .. } => Command::new_err(msg),
+            SSHClientError::NoHome => NoHome::new_err(msg),
+            SSHClientError::NoKnownHostsFile => NoKnownHostsFile::new_err(msg),
+            SSHClientError::NoHostKey => NoHostKey::new_err(msg),
+            SSHClientError::HostKeyChanged { .. } => HostKeyChanged::new_err(msg),
+            SSHClientError::HostUnknown { .. } => HostUnknown::new_err(msg),
+            SSHClientError::HostKeyCheckFailed { .. } => HostKeyCheckFailed::new_err(msg),
+        }
     }
 }
 
 #[pyclass]
 pub struct SSHResult {
+    #[pyo3(get)]
     pub output: String,
+    #[pyo3(get)]
     pub rc: i32,
 }
 
