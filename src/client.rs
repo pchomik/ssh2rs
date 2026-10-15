@@ -11,7 +11,7 @@ pub enum SSHClientError {
     NotConnected,
     #[error("password not provided")]
     PasswordRequired,
-    #[error("authentication required")]
+    #[error("authenticated client required")]
     AuthenticationRequired,
     #[error("password auth failed")]
     AuthFailed(ssh2::Error),
@@ -176,14 +176,20 @@ impl SSHClient {
         channel.handle_extended_data(ExtendedData::Merge).map_err(SSHClientError::SSH2)?;
         channel.exec(&cmd).map_err(|_| SSHClientError::Command("failed to start command"))?;
 
-        let mut output = String::new();
+        let mut raw = Vec::new();
         channel
-            .read_to_string(&mut output)
+            .read_to_end(&mut raw)
             .map_err(|_| SSHClientError::Command("failed to read output"))?;
-        channel.wait_close().map_err(|_| SSHClientError::Command("failed to close channel"))?;
+        let output = String::from_utf8_lossy(&raw).into_owned();
 
+        channel.wait_close().map_err(|_| SSHClientError::Command("failed to close channel"))?;
         let rc = channel.exit_status().map_err(|_| SSHClientError::Command("failed to read exit status"))?;
 
         Ok(SSHResult { output, rc })
+    }
+
+    pub fn disconnect(&self) -> Result<(), SSHClientError> {
+        let _ = self.session.disconnect(None, "disconnect", None);
+        Ok(())
     }
 }
