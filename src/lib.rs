@@ -13,7 +13,7 @@ mod ssh2rs {
 
     #[pymodule_export]
     use super::error::{
-        AuthFailed, AuthenticationRequired, Command, Connect, Handshake, HostKey, HostKeyChanged, HostKeyCheckFailed, HostUnknown, NoHome,
+        AuthFailed, AuthenticationRequired, Command, Connect, Handshake, HostKey, HostKeyChanged, HostKeyCheckFailed, HostKeyUnknown, NoHome,
         NotConnected, PasswordRequired, Russh, SSH2, SSHError,
     };
 }

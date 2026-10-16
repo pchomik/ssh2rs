@@ -1,31 +1,24 @@
-use ssh2rs::client::SSHClient;
+use ssh2rs::core::SSHCore;
 use ssh2rs::error::SSHClientError;
+use ssh2rs::policy::HostKeyPolicy;
 
-fn main() -> Result<(), SSHClientError> {
+#[tokio::main]
+async fn main() -> Result<(), SSHClientError> {
     // Read test credentials
     let host = std::env::var("SSH2RS_TEST_HOST").unwrap();
-    let raw_port = std::env::var("SSH2RS_TEST_PORT").unwrap();
-    let port: u16 = raw_port.parse().unwrap();
+    let port: u16 = std::env::var("SSH2RS_TEST_PORT").unwrap().parse().unwrap();
     let username = std::env::var("SSH2RS_TEST_USERNAME").unwrap();
-    let raw_password = std::env::var("SSH2RS_TEST_PASSWORD").unwrap();
-    let mut password: Option<String> = None;
-    if !raw_password.is_empty() {
-        password = Some(raw_password);
-    }
-
-    // Execute SSH test
-    let mut client = SSHClient::connect(host, port, username, password)?;
-
-    match client.check_known_hosts() {
-        Ok(_) | Err(SSHClientError::NoHome | SSHClientError::HostUnknown(_)) => {}
-        Err(e) => return Err(e),
+    let password = std::env::var("SSH2RS_TEST_PASSWORD").ok().filter(|p| !p.is_empty());
+    let policy = match std::env::var("SSH2RS_TEST_POLICY").as_deref() {
+        Ok("disabled") => HostKeyPolicy::Disabled,
+        Ok("accept_new") => HostKeyPolicy::AcceptNew,
+        _ => HostKeyPolicy::Strict,
     };
 
-    client.authenticate()?;
-    let result = client.exec("ls -la".to_string())?;
-
-    println!("=== OUTPUT ===\n{}\n", result.output.trim());
-    println!("=== RC ===\n{}\n", result.rc);
+    // Execute SSH test: connect, then authenticate
+    let mut core = SSHCore::connect(host, port, policy).await?;
+    core.authenticate(&username, password.as_deref()).await?;
+    println!("authenticated as {username}");
 
     Ok(())
 }

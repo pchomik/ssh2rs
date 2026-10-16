@@ -82,7 +82,7 @@ impl SSHClient {
         match known.check_port(&self.addr, self.port, key) {
             CheckResult::Match => Ok(()),
             CheckResult::Mismatch => Err(SSHClientError::HostKeyChanged(host)),
-            CheckResult::NotFound => Err(SSHClientError::HostUnknown(host)),
+            CheckResult::NotFound => Err(SSHClientError::HostKeyUnknown(host)),
             CheckResult::Failure => Err(SSHClientError::HostKeyCheckFailed(host)),
         }
     }

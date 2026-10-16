@@ -6,5 +6,5 @@ pub enum HostKeyPolicy {
     Disabled,
     AcceptNew,
     #[default]
-    Scrict,
+    Strict,
 }
