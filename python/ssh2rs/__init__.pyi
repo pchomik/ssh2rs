@@ -5,6 +5,11 @@ class SSHResult:
     stderr: str
     rc: int | None
 
+class HostKeyPolicy:
+    Disabled: HostKeyPolicy
+    AcceptNew: HostKeyPolicy
+    Strict: HostKeyPolicy
+
 class SSHClient:
     @staticmethod
     def connect(addr: str, port: int, host_key_policy: Any = ...) -> SSHClient: ...

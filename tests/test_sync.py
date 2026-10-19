@@ -10,12 +10,13 @@ import socket
 
 import pytest
 import ssh2rs
-from ssh2rs import SSHClient
+from ssh2rs import HostKeyPolicy, SSHClient
 
 HOST = os.environ["SSH2RS_TEST_HOST"]
 PORT = int(os.environ["SSH2RS_TEST_PORT"])
 USERNAME = os.environ["SSH2RS_TEST_USERNAME"]
 PASSWORD = os.environ.get("SSH2RS_TEST_PASSWORD") or None
+POLICY = {"disabled": HostKeyPolicy.Disabled, "accept_new": HostKeyPolicy.AcceptNew}.get(os.environ.get("SSH2RS_TEST_POLICY", ""), HostKeyPolicy.Strict)
 
 
 def closed_port():
@@ -26,7 +27,7 @@ def closed_port():
 
 @pytest.fixture
 def client():
-    client = SSHClient.connect(HOST, PORT)
+    client = SSHClient.connect(HOST, PORT, POLICY)
     client.authenticate(USERNAME, PASSWORD)
     yield client
     with contextlib.suppress(ssh2rs.NotConnected):
@@ -67,7 +68,7 @@ def test_exec_after_disconnect_raises(client):
 
 
 def test_with_block_disconnects():
-    with SSHClient.connect(HOST, PORT) as client:
+    with SSHClient.connect(HOST, PORT, POLICY) as client:
         client.authenticate(USERNAME, PASSWORD)
         assert client.exec("echo ctx").stdout == "ctx\n"
     with pytest.raises(ssh2rs.NotConnected):

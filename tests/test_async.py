@@ -12,7 +12,7 @@ import socket
 import pytest
 import pytest_asyncio
 import ssh2rs
-from ssh2rs import AsyncSSHClient
+from ssh2rs import AsyncSSHClient, HostKeyPolicy
 
 pytestmark = pytest.mark.asyncio
 
@@ -20,6 +20,7 @@ HOST = os.environ["SSH2RS_TEST_HOST"]
 PORT = int(os.environ["SSH2RS_TEST_PORT"])
 USERNAME = os.environ["SSH2RS_TEST_USERNAME"]
 PASSWORD = os.environ.get("SSH2RS_TEST_PASSWORD") or None
+POLICY = {"disabled": HostKeyPolicy.Disabled, "accept_new": HostKeyPolicy.AcceptNew}.get(os.environ.get("SSH2RS_TEST_POLICY", ""), HostKeyPolicy.Strict)
 
 
 def closed_port():
@@ -29,7 +30,7 @@ def closed_port():
 
 
 async def connect_authenticated():
-    client = await AsyncSSHClient.connect(HOST, PORT)
+    client = await AsyncSSHClient.connect(HOST, PORT, POLICY)
     await client.authenticate(USERNAME, PASSWORD)
     return client
 

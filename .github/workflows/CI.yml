@@ -159,7 +159,7 @@ jobs:
                   path: dist
 
     test:
-        name: Test
+        name: connection-test
         runs-on: ubuntu-22.04
         environment: test
         env:
