@@ -4,6 +4,8 @@ use pyo3::{PyErr, exceptions::PyRuntimeError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SSHClientError {
+    #[error("timeout during {0}")]
+    Timeout(&'static str),
     #[error("connected client required")]
     NotConnected,
     #[error("password not provided")]
@@ -12,9 +14,9 @@ pub enum SSHClientError {
     AuthenticationRequired,
     #[error("wrong username or password/key")]
     AuthenticationFailed,
-    #[error("failed to connect to {addr}:{port}: {source}")]
+    #[error("failed to connect to {host}:{port}: {source}")]
     Connect {
-        addr: String,
+        host: String,
         port: u16,
         #[source]
         source: io::Error,
@@ -62,6 +64,7 @@ impl From<russh::Error> for SSHClientError {
 }
 
 pyo3::create_exception!(ssh2rs, SSHError, PyRuntimeError);
+pyo3::create_exception!(ssh2rs, Timeout, SSHError);
 pyo3::create_exception!(ssh2rs, NotConnected, SSHError);
 pyo3::create_exception!(ssh2rs, PasswordRequired, SSHError);
 pyo3::create_exception!(ssh2rs, AuthenticationRequired, SSHError);
@@ -83,6 +86,7 @@ impl From<SSHClientError> for PyErr {
     fn from(err: SSHClientError) -> PyErr {
         let msg = err.to_string();
         match err {
+            SSHClientError::Timeout(_) => Timeout::new_err(msg),
             SSHClientError::NotConnected => NotConnected::new_err(msg),
             SSHClientError::PasswordRequired => PasswordRequired::new_err(msg),
             SSHClientError::AuthenticationRequired => AuthenticationRequired::new_err(msg),

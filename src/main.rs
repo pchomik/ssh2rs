@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use ssh2rs::core::SSHCore;
 use ssh2rs::error::SSHClientError;
 use ssh2rs::policy::HostKeyPolicy;
@@ -16,9 +18,9 @@ async fn main() -> Result<(), SSHClientError> {
     };
 
     // Execute SSH test: connect, then authenticate
-    let core = SSHCore::connect(host, port, policy).await?;
+    let core = SSHCore::connect(host, port, Some(Duration::from_secs(30)), policy).await?;
     core.authenticate(&username, password.as_deref()).await?;
-    let result = core.exec("seq 1 100000").await?;
+    let result = core.exec("seq 1 100000", Some(Duration::from_secs(30))).await?;
     println!("=== STDOUT ===\n{}", result.stdout);
     println!("=== STDERR ===\n{}", result.stderr);
     println!("=== RC ===\n{:?}", result.rc.unwrap());
