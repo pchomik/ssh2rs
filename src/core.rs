@@ -1,4 +1,11 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use pyo3::pyclass;
 use russh::{
@@ -39,9 +46,18 @@ pub struct SSHResult {
 
 pub struct SSHCore {
     session: Mutex<Handle<Handler>>,
+    connected: AtomicBool,
 }
 
 impl SSHCore {
+    // Explicit disconnect check; russh reports a closed session as ConnectionLost.
+    fn ensure_connected(&self) -> Result<(), SSHClientError> {
+        if self.connected.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        Err(SSHClientError::NotConnected)
+    }
+
     pub async fn connect(addr: String, port: u16, policy: HostKeyPolicy) -> Result<Self, SSHClientError> {
         let config = Config {
             inactivity_timeout: Some(Duration::from_secs(30)),
@@ -68,9 +84,13 @@ impl SSHCore {
             SSHClientError::ConnectionLost(e) | SSHClientError::SSH2(e) => SSHClientError::Handshake(e),
             other => other,
         })?;
-        Ok(SSHCore { session: Mutex::new(handle) })
+        Ok(SSHCore {
+            session: Mutex::new(handle),
+            connected: AtomicBool::new(true),
+        })
     }
     pub async fn authenticate(&self, user: &str, password: Option<&str>) -> Result<(), SSHClientError> {
+        self.ensure_connected()?;
         let home = std::env::home_dir().ok_or(SSHClientError::NoHome)?;
         let mut session = self.session.lock().await;
 
@@ -118,6 +138,7 @@ impl SSHCore {
         Err(SSHClientError::AuthenticationFailed)
     }
     pub async fn exec(&self, cmd: &str) -> Result<SSHResult, SSHClientError> {
+        self.ensure_connected()?;
         let session = self.session.lock().await;
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, cmd).await?;
@@ -144,8 +165,10 @@ impl SSHCore {
         })
     }
     pub async fn disconnect(&self) -> Result<(), SSHClientError> {
+        self.ensure_connected()?;
         let session = self.session.lock().await;
         session.disconnect(Disconnect::ByApplication, "", "English").await?;
+        self.connected.store(false, Ordering::Release);
         Ok(())
     }
 }
