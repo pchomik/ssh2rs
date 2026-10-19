@@ -25,9 +25,9 @@
 ## Sync example
 
 ```python
-from ssh2rs import SSHClient
+from ssh2rs import HostKeyPolicy, SSHClient
 
-with SSHClient.connect("example.com", 22) as client:
+with SSHClient.connect("example.com", 22, HostKeyPolicy.Strict) as client:
     client.authenticate("user", "password")  # password=None tries agent and ~/.ssh keys first
     result = client.exec("uname -a")
     print(result.stdout, result.stderr, result.rc)
@@ -38,11 +38,11 @@ with SSHClient.connect("example.com", 22) as client:
 ```python
 import asyncio
 
-from ssh2rs import AsyncSSHClient
+from ssh2rs import AsyncSSHClient, HostKeyPolicy
 
 
 async def main():
-    async with await AsyncSSHClient.connect("example.com", 22) as client:
+    async with await AsyncSSHClient.connect("example.com", 22, HostKeyPolicy.Strict) as client:
         await client.authenticate("user", "password")  # password=None tries agent and ~/.ssh keys first
         result = await client.exec("uname -a")
         print(result.stdout, result.stderr, result.rc)
@@ -50,6 +50,18 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Host key policy
+
+Pass the policy as the third argument of `connect`. Default is `HostKeyPolicy.Strict`.
+
+| Policy                    | Unknown host           | Changed host key | Use case                      |
+|---------------------------|------------------------|------------------|-------------------------------|
+| `HostKeyPolicy.Strict`    | Rejected               | Rejected         | Default, production           |
+| `HostKeyPolicy.AcceptNew` | Added to `known_hosts` | Rejected         | First connection to new hosts |
+| `HostKeyPolicy.Disabled`  | Accepted               | Accepted         | Testing only, no MITM check   |
+
+**Warning:** `HostKeyPolicy.Disabled` skips host key verification. Anyone on the network path can impersonate the server.
 
 ## Install
 
