@@ -76,3 +76,9 @@ docs/_build/
 
 # Markdown
 *.md
+
+# UV
+uv.lock
+
+# ruff
+.ruff_cache

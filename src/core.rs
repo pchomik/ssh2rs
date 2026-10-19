@@ -1,6 +1,8 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use pyo3::pyclass;
 use russh::{
+    ChannelMsg, Disconnect,
     client::{self, Config, Handle},
     keys::{
         PrivateKeyWithHashAlg,
@@ -24,6 +26,17 @@ fn known_hosts_path(policy: HostKeyPolicy) -> Result<Option<PathBuf>, SSHClientE
     Ok(Some(path))
 }
 
+#[derive(Debug)]
+#[pyclass]
+pub struct SSHResult {
+    #[pyo3(get)]
+    pub stdout: String,
+    #[pyo3(get)]
+    pub stderr: String,
+    #[pyo3(get)]
+    pub rc: Option<u32>,
+}
+
 pub struct SSHCore {
     session: Mutex<Handle<Handler>>,
 }
@@ -44,18 +57,27 @@ impl SSHCore {
             known_hosts_file_path,
         };
 
-        let handle = client::connect(Arc::new(config), (addr.as_str(), port), handler).await?;
+        let socket = tokio::net::TcpStream::connect((addr.as_str(), port))
+            .await
+            .map_err(|source| SSHClientError::Connect { addr: addr.clone(), port, source })?;
+        let handle = client::connect_stream(Arc::new(config), socket, handler)
+            .await
+            .map_err(|e| match e {
+                SSHClientError::ConnectionLost(e) | SSHClientError::SSH2(e) => SSHClientError::Handshake(e),
+                other => other,
+            })?;
         Ok(SSHCore { session: Mutex::new(handle) })
     }
-    pub async fn authenticate(&mut self, user: &str, password: Option<&str>) -> Result<(), SSHClientError> {
+    pub async fn authenticate(&self, user: &str, password: Option<&str>) -> Result<(), SSHClientError> {
         let home = std::env::home_dir().ok_or(SSHClientError::NoHome)?;
+        let mut session = self.session.lock().await;
 
-        let hash_alg = self.session.get_mut().best_supported_rsa_hash().await?.flatten();
+        let hash_alg = session.best_supported_rsa_hash().await?.flatten();
 
         if let Ok(mut agent) = AgentClient::connect_env().await {
-            for id in agent.request_identities().await? {
+            for id in agent.request_identities().await.map_err(SSHClientError::Agent)? {
                 let AgentIdentity::PublicKey { key, .. } = id else { continue };
-                let Ok(res) = self.session.get_mut().authenticate_publickey_with(user, key, hash_alg, &mut agent).await else {
+                let Ok(res) = session.authenticate_publickey_with(user, key, hash_alg, &mut agent).await else {
                     continue;
                 };
 
@@ -69,9 +91,7 @@ impl SSHCore {
             let Ok(key) = load_secret_key(home.join(".ssh").join(name), None) else {
                 continue;
             };
-            let res = self
-                .session
-                .get_mut()
+            let res = session
                 .authenticate_publickey(user, PrivateKeyWithHashAlg::new(Arc::new(key), hash_alg))
                 .await?;
             if res.success() {
@@ -82,7 +102,7 @@ impl SSHCore {
         if password.is_none() {
             return Err(SSHClientError::PasswordRequired);
         }
-        let res = self.session.get_mut().authenticate_password(user, password.unwrap()).await?;
+        let res = session.authenticate_password(user, password.unwrap()).await?;
 
         if res.success() {
             return Ok(());
@@ -90,6 +110,35 @@ impl SSHCore {
 
         Err(SSHClientError::AuthenticationFailed)
     }
-    pub async fn exec() {}
-    pub async fn disconnect() {}
+    pub async fn exec(&self, cmd: &str) -> Result<SSHResult, SSHClientError> {
+        let session = self.session.lock().await;
+        let mut channel = session.channel_open_session().await?;
+        channel.exec(true, cmd).await?;
+
+        let mut rc = None;
+        let mut stdout = vec![];
+        let mut stderr = vec![];
+        loop {
+            let Some(msg) = channel.wait().await else {
+                break;
+            };
+
+            match msg {
+                ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
+                ChannelMsg::ExtendedData { data, ext: 1 } => stderr.extend_from_slice(&data),
+                ChannelMsg::ExitStatus { exit_status } => rc = Some(exit_status),
+                _ => {}
+            }
+        }
+        Ok(SSHResult {
+            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+            rc,
+        })
+    }
+    pub async fn disconnect(&self) -> Result<(), SSHClientError> {
+        let session = self.session.lock().await;
+        session.disconnect(Disconnect::ByApplication, "", "English").await?;
+        Ok(())
+    }
 }

@@ -31,6 +31,7 @@ impl client::Handler for Handler {
             }
             Ok(false) => Err(SSHClientError::HostKeyUnknown(self.host.clone())),
             Err(russh::keys::Error::KeyChanged { .. }) => Err(SSHClientError::HostKeyChanged(self.host.clone())),
+            Err(russh::keys::Error::IO(source)) => Err(SSHClientError::KnownHostsUnreadable { path: path.clone(), source }),
             Err(e) => Err(e.into()),
         }
     }

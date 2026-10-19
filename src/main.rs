@@ -16,9 +16,12 @@ async fn main() -> Result<(), SSHClientError> {
     };
 
     // Execute SSH test: connect, then authenticate
-    let mut core = SSHCore::connect(host, port, policy).await?;
+    let core = SSHCore::connect(host, port, policy).await?;
     core.authenticate(&username, password.as_deref()).await?;
-    println!("authenticated as {username}");
+    let result = core.exec("ls -ls /volume1/").await?;
+    println!("=== STDOUT ===\n{}", result.stdout);
+    println!("=== STDERR ===\n{}", result.stderr);
+    println!("=== RC ===\n{:?}", result.rc.unwrap());
 
     Ok(())
 }
