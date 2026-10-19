@@ -59,13 +59,15 @@ impl SSHCore {
 
         let socket = tokio::net::TcpStream::connect((addr.as_str(), port))
             .await
-            .map_err(|source| SSHClientError::Connect { addr: addr.clone(), port, source })?;
-        let handle = client::connect_stream(Arc::new(config), socket, handler)
-            .await
-            .map_err(|e| match e {
-                SSHClientError::ConnectionLost(e) | SSHClientError::SSH2(e) => SSHClientError::Handshake(e),
-                other => other,
+            .map_err(|source| SSHClientError::Connect {
+                addr: addr.clone(),
+                port,
+                source,
             })?;
+        let handle = client::connect_stream(Arc::new(config), socket, handler).await.map_err(|e| match e {
+            SSHClientError::ConnectionLost(e) | SSHClientError::SSH2(e) => SSHClientError::Handshake(e),
+            other => other,
+        })?;
         Ok(SSHCore { session: Mutex::new(handle) })
     }
     pub async fn authenticate(&self, user: &str, password: Option<&str>) -> Result<(), SSHClientError> {
@@ -74,7 +76,12 @@ impl SSHCore {
 
         let hash_alg = session.best_supported_rsa_hash().await?.flatten();
 
-        if let Ok(mut agent) = AgentClient::connect_env().await {
+        #[cfg(unix)]
+        let agent = AgentClient::connect_env().await;
+        #[cfg(windows)]
+        let agent = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await;
+
+        if let Ok(mut agent) = agent {
             for id in agent.request_identities().await.map_err(SSHClientError::Agent)? {
                 let AgentIdentity::PublicKey { key, .. } = id else { continue };
                 let Ok(res) = session.authenticate_publickey_with(user, key, hash_alg, &mut agent).await else {
