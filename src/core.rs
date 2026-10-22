@@ -173,9 +173,12 @@ impl SSHCore {
         };
 
         match timeout {
-            Some(d) => tokio::time::timeout(d, feature)
-                .await
-                .map_err(|_| SSHClientError::Timeout("execution timeout"))?,
+            Some(d) => {
+                if tokio::time::timeout(d, feature).await.is_err() {
+                    let _ = channel.close().await;
+                    return Err(SSHClientError::Timeout("execution timeout"));
+                }
+            }
             None => feature.await,
         };
         Ok(SSHResult {
