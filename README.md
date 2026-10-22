@@ -22,6 +22,7 @@
 
 - Sync client (`SSHClient`) and async client (`AsyncSSHClient`).
 - Run remote commands and get `stdout`, `stderr` and exit code (`rc`).
+- Read output of the last command through `latest_result`, including a timed-out command.
 - Password authentication, plus SSH agent and default key files (`~/.ssh`).
 - Host key verification through `known_hosts` (`Strict` by default).
 - Context managers (`with` / `async with`) disconnect automatically.
@@ -106,6 +107,26 @@ result = client.exec("sleep 5", timeout=2.0)  # raises ssh2rs.Timeout
 ```
 
 A timed-out call raises `ssh2rs.Timeout`.
+
+## Latest result
+
+`latest_result` is a read-only property on both `SSHClient` and `AsyncSSHClient`. It returns an `SSHResult` with the `stdout` and `stderr` of the last `exec` call.
+
+**Note:** `latest_result` also works when `exec` timed out. It returns the output collected before the timeout, so you can inspect partial output after `ssh2rs.Timeout`.
+
+```python
+from ssh2rs import SSHClient, Timeout
+
+with SSHClient.connect("example.com", 22) as client:
+    client.authenticate("user", "password")
+    try:
+        client.exec("sleep 5; echo done", timeout=2.0)
+    except Timeout:
+        print(client.latest_result.stdout)  # partial output before timeout
+```
+
+- Each `exec` call resets the stored output. Before the first `exec`, both fields are empty strings.
+- `rc` is the exit code of the last command, or `None` if the command did not report one. After a timeout, `rc` is usually `None` because the command did not finish.
 
 ## Install
 
