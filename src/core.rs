@@ -47,6 +47,7 @@ pub struct SSHResult {
 pub struct SSHCore {
     session: Mutex<Handle<Handler>>,
     connected: AtomicBool,
+    last_result: std::sync::Mutex<(Vec<u8>, Vec<u8>)>,
 }
 
 impl SSHCore {
@@ -98,6 +99,7 @@ impl SSHCore {
         Ok(SSHCore {
             session: Mutex::new(handle),
             connected: AtomicBool::new(true),
+            last_result: std::sync::Mutex::new((vec![], vec![])),
         })
     }
     pub async fn authenticate(&self, username: &str, password: Option<&str>) -> Result<(), SSHClientError> {
@@ -150,6 +152,7 @@ impl SSHCore {
     }
     pub async fn exec(&self, cmd: &str, timeout: Option<Duration>) -> Result<SSHResult, SSHClientError> {
         self.ensure_connected()?;
+        *self.last_result.lock().unwrap_or_else(|e| e.into_inner()) = (vec![], vec![]);
         let session = self.session.lock().await;
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, cmd).await?;
@@ -176,17 +179,29 @@ impl SSHCore {
             Some(d) => {
                 if tokio::time::timeout(d, feature).await.is_err() {
                     let _ = channel.close().await;
+                    *self.last_result.lock().unwrap_or_else(|e| e.into_inner()) = (stdout, stderr);
                     return Err(SSHClientError::Timeout("execution timeout"));
                 }
             }
             None => feature.await,
         };
+        *self.last_result.lock().unwrap_or_else(|e| e.into_inner()) = (stdout.clone(), stderr.clone());
         Ok(SSHResult {
             stdout: String::from_utf8_lossy(&stdout).into_owned(),
             stderr: String::from_utf8_lossy(&stderr).into_owned(),
             rc,
         })
     }
+
+    pub async fn latest_result(&self) -> SSHResult {
+        let last_result = self.last_result.lock().unwrap_or_else(|e| e.into_inner());
+        SSHResult {
+            stdout: String::from_utf8_lossy(&last_result.0).into_owned(),
+            stderr: String::from_utf8_lossy(&last_result.1).into_owned(),
+            rc: None,
+        }
+    }
+
     pub async fn disconnect(&self) -> Result<(), SSHClientError> {
         self.ensure_connected()?;
         let session = self.session.lock().await;

@@ -112,3 +112,15 @@ async def test_exec_timeout_raises_timeout(client: AsyncSSHClient) -> None:
 async def test_connect_timeout_raises_timeout(silent_port: int) -> None:
     with pytest.raises(ssh2rs.Timeout):
         await AsyncSSHClient.connect(host="127.0.0.1", port=silent_port, timeout=0.5)
+
+
+async def test_latest_result_property_returns_last_exec_output(client: AsyncSSHClient) -> None:
+    await client.exec(cmd="echo first", timeout=EXECUTION_TIMEOUT)
+    await client.exec(cmd="echo out; echo err >&2", timeout=EXECUTION_TIMEOUT)
+    assert client.latest_result.stdout == "out\n"
+    assert client.latest_result.stderr == "err\n"
+
+
+async def test_latest_result_property_empty_before_exec(client: AsyncSSHClient) -> None:
+    assert client.latest_result.stdout == ""
+    assert client.latest_result.stderr == ""

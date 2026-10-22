@@ -33,6 +33,11 @@ impl SSHClient {
         Ok(py.detach(|| get_runtime().block_on(self.core.exec(&cmd, duration)))?)
     }
 
+    #[getter]
+    fn latest_result(&self, py: Python<'_>) -> PyResult<SSHResult> {
+        Ok(py.detach(|| get_runtime().block_on(self.core.latest_result())))
+    }
+
     fn disconnect(&self, py: Python<'_>) -> PyResult<()> {
         Ok(py.detach(|| get_runtime().block_on(self.core.disconnect()))?)
     }
@@ -80,6 +85,11 @@ impl AsyncSSHClient {
         let core = self.core.clone();
         let duration = to_duration(timeout)?;
         future_into_py(py, async move { core.exec(&cmd, duration).await.map_err(PyErr::from) })
+    }
+
+    #[getter]
+    fn latest_result(&self, py: Python<'_>) -> PyResult<SSHResult> {
+        Ok(py.detach(|| get_runtime().block_on(self.core.latest_result())))
     }
 
     fn disconnect<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
