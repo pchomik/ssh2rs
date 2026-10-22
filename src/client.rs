@@ -24,10 +24,12 @@ impl SSHClient {
         Ok(Self { core: Arc::new(core) })
     }
 
+    #[pyo3(signature = (username, password = None))]
     fn authenticate(&self, py: Python<'_>, username: String, password: Option<String>) -> PyResult<()> {
         Ok(py.detach(|| get_runtime().block_on(self.core.authenticate(&username, password.as_deref())))?)
     }
 
+    #[pyo3(signature = (cmd, timeout = None))]
     fn exec(&self, py: Python<'_>, cmd: String, timeout: Option<f64>) -> PyResult<SSHResult> {
         let duration = to_duration(timeout)?;
         Ok(py.detach(|| get_runtime().block_on(self.core.exec(&cmd, duration)))?)
@@ -73,6 +75,7 @@ impl AsyncSSHClient {
         })
     }
 
+    #[pyo3(signature = (username, password = None))]
     fn authenticate<'py>(&self, py: Python<'py>, username: String, password: Option<String>) -> PyResult<Bound<'py, PyAny>> {
         let core = self.core.clone();
         future_into_py(
@@ -81,6 +84,7 @@ impl AsyncSSHClient {
         )
     }
 
+    #[pyo3(signature = (cmd, timeout = None))]
     fn exec<'py>(&self, py: Python<'py>, cmd: String, timeout: Option<f64>) -> PyResult<Bound<'py, PyAny>> {
         let core = self.core.clone();
         let duration = to_duration(timeout)?;
