@@ -35,6 +35,18 @@ impl SSHClient {
         Ok(py.detach(|| get_runtime().block_on(self.core.exec(&cmd, duration)))?)
     }
 
+    #[pyo3(signature = (src, dst, timeout = None))]
+    fn upload(&self, py: Python<'_>, src: String, dst: String, timeout: Option<f64>) -> PyResult<()> {
+        let duration = to_duration(timeout)?;
+        Ok(py.detach(|| get_runtime().block_on(self.core.upload(&src, &dst, duration)))?)
+    }
+
+    #[pyo3(signature = (src, dst, timeout = None))]
+    fn download(&self, py: Python<'_>, src: String, dst: String, timeout: Option<f64>) -> PyResult<()> {
+        let duration = to_duration(timeout)?;
+        Ok(py.detach(|| get_runtime().block_on(self.core.download(&src, &dst, duration)))?)
+    }
+
     #[getter]
     fn latest_result(&self, py: Python<'_>) -> PyResult<SSHResult> {
         Ok(py.detach(|| get_runtime().block_on(self.core.latest_result())))
@@ -89,6 +101,20 @@ impl AsyncSSHClient {
         let core = self.core.clone();
         let duration = to_duration(timeout)?;
         future_into_py(py, async move { core.exec(&cmd, duration).await.map_err(PyErr::from) })
+    }
+
+    #[pyo3(signature = (src, dst, timeout = None))]
+    fn upload<'py>(&self, py: Python<'py>, src: String, dst: String, timeout: Option<f64>) -> PyResult<Bound<'py, PyAny>> {
+        let core = self.core.clone();
+        let duration = to_duration(timeout)?;
+        future_into_py(py, async move { core.upload(&src, &dst, duration).await.map_err(PyErr::from) })
+    }
+
+    #[pyo3(signature = (src, dst, timeout = None))]
+    fn download<'py>(&self, py: Python<'py>, src: String, dst: String, timeout: Option<f64>) -> PyResult<Bound<'py, PyAny>> {
+        let core = self.core.clone();
+        let duration = to_duration(timeout)?;
+        future_into_py(py, async move { core.download(&src, &dst, duration).await.map_err(PyErr::from) })
     }
 
     #[getter]

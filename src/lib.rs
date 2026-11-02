@@ -16,7 +16,7 @@ mod ssh2rs {
 
     #[pymodule_export]
     use super::error::{
-        Agent, AuthenticationFailed, AuthenticationRequired, Command, Connect, ConnectionLost, Handshake, HostKey, HostKeyChanged, HostKeyUnknown,
-        KnownHostsPathRequired, KnownHostsUnreadable, NoHome, NotConnected, PasswordRequired, SSH2, SSHError, Timeout,
+        Agent, AuthenticationFailed, AuthenticationRequired, Command, Connect, ConnectionLost, FileError, Handshake, HostKey, HostKeyChanged,
+        HostKeyUnknown, KnownHostsPathRequired, KnownHostsUnreadable, NoHome, NotConnected, PasswordRequired, SFTP, SSH2, SSHError, Timeout,
     };
 }

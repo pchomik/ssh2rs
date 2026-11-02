@@ -17,7 +17,13 @@ use russh::{
         load_secret_key,
     },
 };
-use tokio::sync::Mutex;
+use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::OpenFlags;
+
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Mutex,
+};
 
 use crate::{error::SSHClientError, handler::Handler, policy::HostKeyPolicy};
 
@@ -200,6 +206,60 @@ impl SSHCore {
             stderr: String::from_utf8_lossy(&last_result.1).into_owned(),
             rc: last_result.2,
         }
+    }
+
+    pub async fn upload(&self, src_path: &str, dst_path: &str, timeout: Option<Duration>) -> Result<(), SSHClientError> {
+        self.ensure_connected()?;
+        *self.last_result.lock().unwrap_or_else(|e| e.into_inner()) = (vec![], vec![], None);
+        let session = self.session.lock().await;
+        let channel = session.channel_open_session().await?;
+        channel.request_subsystem(true, "sftp").await?;
+        let sftp = SftpSession::new(channel.into_stream()).await?;
+        let feature = async {
+            let mut file = sftp
+                .open_with_flags(dst_path, OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE | OpenFlags::READ)
+                .await?;
+            let file_content = tokio::fs::read(src_path).await?;
+            file.write_all(&file_content).await?;
+            file.shutdown().await?;
+            Ok::<(), SSHClientError>(())
+        };
+
+        let result = match timeout {
+            Some(duration) => tokio::time::timeout(duration, feature)
+                .await
+                .map_err(|_| SSHClientError::Timeout("upload"))
+                .and_then(|r| r),
+            None => feature.await,
+        };
+        let _ = sftp.close().await;
+        result
+    }
+
+    pub async fn download(&self, src_path: &str, dst_path: &str, timeout: Option<Duration>) -> Result<(), SSHClientError> {
+        self.ensure_connected()?;
+        *self.last_result.lock().unwrap_or_else(|e| e.into_inner()) = (vec![], vec![], None);
+        let session = self.session.lock().await;
+        let channel = session.channel_open_session().await?;
+        channel.request_subsystem(true, "sftp").await?;
+        let sftp = SftpSession::new(channel.into_stream()).await?;
+        let feature = async {
+            let mut file = sftp.open_with_flags(src_path, OpenFlags::READ).await?;
+            let mut file_content = vec![];
+            file.read_to_end(&mut file_content).await?;
+            file.shutdown().await?;
+            tokio::fs::write(dst_path, file_content).await?;
+            Ok::<(), SSHClientError>(())
+        };
+        let result = match timeout {
+            Some(duration) => tokio::time::timeout(duration, feature)
+                .await
+                .map_err(|_| SSHClientError::Timeout("download"))
+                .and_then(|r| r),
+            None => feature.await,
+        };
+        let _ = sftp.close().await;
+        result
     }
 
     pub async fn disconnect(&self) -> Result<(), SSHClientError> {

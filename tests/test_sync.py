@@ -7,7 +7,9 @@ Needs SSH2RS_TEST_HOST, SSH2RS_TEST_PORT, SSH2RS_TEST_USERNAME; SSH2RS_TEST_PASS
 import contextlib
 import os
 import socket
+import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 import ssh2rs
@@ -116,3 +118,80 @@ def test_latest_result_property_returns_last_exec_output(client: SSHClient) -> N
 def test_latest_result_property_empty_before_exec(client: SSHClient) -> None:
     assert client.latest_result.stdout == ""
     assert client.latest_result.stderr == ""
+
+
+@pytest.fixture
+def remote_path(client: SSHClient) -> Iterator[str]:
+    path = f"/tmp/ssh2rs-test-{uuid.uuid4().hex}"
+    yield path
+    with contextlib.suppress(ssh2rs.NotConnected):
+        client.exec(cmd=f"rm -f {path}", timeout=EXECUTION_TIMEOUT)
+
+
+def test_upload_writes_remote_file(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    src = tmp_path / "src.txt"
+    src.write_text("hello upload\n")
+    client.upload(src=str(src), dst=remote_path, timeout=EXECUTION_TIMEOUT)
+    assert client.exec(cmd=f"cat {remote_path}", timeout=EXECUTION_TIMEOUT).stdout == "hello upload\n"
+
+
+def test_upload_overwrites_existing_remote_file(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    client.exec(cmd=f"head -c 1000 /dev/zero > {remote_path}", timeout=EXECUTION_TIMEOUT)
+    src = tmp_path / "src.txt"
+    src.write_text("new\n")
+    client.upload(src=str(src), dst=remote_path, timeout=EXECUTION_TIMEOUT)
+    assert client.exec(cmd=f"cat {remote_path}", timeout=EXECUTION_TIMEOUT).stdout == "new\n"
+
+
+def test_upload_then_download_round_trip_binary(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    content = bytes(range(256)) * 4096  # 1 MiB, all byte values
+    src = tmp_path / "src.bin"
+    src.write_bytes(content)
+    back = tmp_path / "back.bin"
+    client.upload(src=str(src), dst=remote_path, timeout=EXECUTION_TIMEOUT)
+    client.download(src=remote_path, dst=str(back), timeout=EXECUTION_TIMEOUT)
+    assert back.read_bytes() == content
+
+
+def test_download_writes_local_file(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    client.exec(cmd=f"printf 'remote data\\n' > {remote_path}", timeout=EXECUTION_TIMEOUT)
+    dst = tmp_path / "dst.txt"
+    client.download(src=remote_path, dst=str(dst), timeout=EXECUTION_TIMEOUT)
+    assert dst.read_text() == "remote data\n"
+
+
+def test_upload_missing_local_file_raises_file_error(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    with pytest.raises(ssh2rs.SSHError):
+        client.upload(src=str(tmp_path / "missing.txt"), dst=remote_path, timeout=EXECUTION_TIMEOUT)
+
+
+def test_download_missing_remote_file_raises_sftp(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    with pytest.raises(ssh2rs.SSHError):
+        client.download(src=remote_path, dst=str(tmp_path / "dst.txt"), timeout=EXECUTION_TIMEOUT)
+
+
+def test_upload_timeout_raises_timeout(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    src = tmp_path / "src.txt"
+    src.write_text("data\n")
+    with pytest.raises(ssh2rs.Timeout):
+        client.upload(src=str(src), dst=remote_path, timeout=1e-6)
+
+
+def test_download_timeout_raises_timeout(client: SSHClient, tmp_path: Path, remote_path: str) -> None:
+    client.exec(cmd=f"echo data > {remote_path}", timeout=EXECUTION_TIMEOUT)
+    with pytest.raises(ssh2rs.Timeout):
+        client.download(src=remote_path, dst=str(tmp_path / "dst.txt"), timeout=1e-6)
+
+
+def test_upload_after_disconnect_raises(client: SSHClient, tmp_path: Path) -> None:
+    src = tmp_path / "src.txt"
+    src.write_text("data\n")
+    client.disconnect()
+    with pytest.raises(ssh2rs.NotConnected):
+        client.upload(src=str(src), dst="/tmp/ssh2rs-unused", timeout=EXECUTION_TIMEOUT)
+
+
+def test_download_after_disconnect_raises(client: SSHClient, tmp_path: Path) -> None:
+    client.disconnect()
+    with pytest.raises(ssh2rs.NotConnected):
+        client.download(src="/tmp/ssh2rs-unused", dst=str(tmp_path / "dst.txt"), timeout=EXECUTION_TIMEOUT)

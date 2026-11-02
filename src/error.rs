@@ -39,6 +39,10 @@ pub enum SSHClientError {
     HostKey(#[from] russh::keys::Error),
     #[error("SSH protocol error: {0}")]
     SSH2(#[source] russh::Error),
+    #[error("SFTP protocol error: {0}")]
+    SFTP(#[source] russh_sftp::client::error::Error),
+    #[error("File related error: {0}")]
+    FileError(#[source] std::io::Error),
     #[error("cannot read known_hosts file {}", path.display())]
     KnownHostsUnreadable {
         path: PathBuf,
@@ -63,6 +67,18 @@ impl From<russh::Error> for SSHClientError {
     }
 }
 
+impl From<russh_sftp::client::error::Error> for SSHClientError {
+    fn from(e: russh_sftp::client::error::Error) -> Self {
+        Self::SFTP(e)
+    }
+}
+
+impl From<std::io::Error> for SSHClientError {
+    fn from(e: std::io::Error) -> Self {
+        Self::FileError(e)
+    }
+}
+
 pyo3::create_exception!(ssh2rs, SSHError, PyRuntimeError);
 pyo3::create_exception!(ssh2rs, Timeout, SSHError);
 pyo3::create_exception!(ssh2rs, NotConnected, SSHError);
@@ -74,6 +90,8 @@ pyo3::create_exception!(ssh2rs, Handshake, SSHError);
 pyo3::create_exception!(ssh2rs, ConnectionLost, SSHError);
 pyo3::create_exception!(ssh2rs, Agent, SSHError);
 pyo3::create_exception!(ssh2rs, SSH2, SSHError);
+pyo3::create_exception!(ssh2rs, SFTP, SSHError);
+pyo3::create_exception!(ssh2rs, FileError, SSHError);
 pyo3::create_exception!(ssh2rs, HostKey, SSHError);
 pyo3::create_exception!(ssh2rs, Command, SSHError);
 pyo3::create_exception!(ssh2rs, NoHome, SSHError);
@@ -98,6 +116,8 @@ impl From<SSHClientError> for PyErr {
             SSHClientError::Agent(_) => Agent::new_err(msg),
             SSHClientError::NoHome => NoHome::new_err(msg),
             SSHClientError::SSH2(_) => SSH2::new_err(msg),
+            SSHClientError::SFTP(_) => SFTP::new_err(msg),
+            SSHClientError::FileError(_) => FileError::new_err(msg),
             SSHClientError::HostKey(_) => HostKey::new_err(msg),
             SSHClientError::KnownHostsUnreadable { .. } => KnownHostsUnreadable::new_err(msg),
             SSHClientError::KnownHostsPathRequired => KnownHostsPathRequired::new_err(msg),
