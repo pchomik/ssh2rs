@@ -23,6 +23,7 @@
 - Sync client (`SSHClient`) and async client (`AsyncSSHClient`).
 - Run remote commands and get `stdout`, `stderr` and exit code (`rc`).
 - Read output of the last command through `latest_result`, including a timed-out command.
+- Upload and download files over SFTP (`upload`, `download`).
 - Password authentication, plus SSH agent and default key files (`~/.ssh`).
 - Host key verification through `known_hosts` (`Strict` by default).
 - Context managers (`with` / `async with`) disconnect automatically.
@@ -34,9 +35,9 @@
 ```python
 from ssh2rs import SSHClient
 
-with SSHClient.connect("example.com", 22) as client:
+with SSHClient.connect("example.com", 22, timeout=5.0) as client:
     client.authenticate("user", "password")
-    result = client.exec("uname -a")
+    result = client.exec("uname -a", timeout=3.0)
     print(result.stdout, result.stderr, result.rc)
 ```
 
@@ -49,9 +50,9 @@ from ssh2rs import AsyncSSHClient
 
 
 async def main():
-    async with await AsyncSSHClient.connect("example.com", 22) as client:
+    async with await AsyncSSHClient.connect("example.com", 22, timeout=5.0) as client:
         await client.authenticate("user", "password")
-        result = await client.exec("uname -a")
+        result = await client.exec("uname -a", timeout=3.0)
         print(result.stdout, result.stderr, result.rc)
 
 
@@ -69,8 +70,16 @@ asyncio.run(main())
 If no method succeeds, `authenticate` raises `PasswordRequired` when `password` is `None`, otherwise `AuthenticationFailed`.
 
 ```python
-client.authenticate("user")                # agent and key files only
-client.authenticate("user", "password")    # agent, key files, then password
+from ssh2rs import PasswordRequired, SSHClient
+
+with SSHClient.connect("example.com", 22) as client:
+    try:
+        client.authenticate("user")            # agent and key files only
+    except PasswordRequired:
+        print("no agent or key file accepted")
+
+with SSHClient.connect("example.com", 22) as client:
+    client.authenticate("user", "password")    # agent, key files, then password
 ```
 
 ## Host key policy
@@ -102,8 +111,14 @@ Both timeouts are in seconds (`float`). Pass `None` to disable one.
 | `exec`    | `timeout` | `None`  | Remote command execution        |
 
 ```python
-client = SSHClient.connect("example.com", 22, timeout=10.0)
-result = client.exec("sleep 5", timeout=2.0)  # raises ssh2rs.Timeout
+from ssh2rs import SSHClient, Timeout
+
+with SSHClient.connect("example.com", 22, timeout=10.0) as client:
+    client.authenticate("user", "password")
+    try:
+        client.exec("sleep 5", timeout=2.0)
+    except Timeout:
+        print("command timed out")
 ```
 
 A timed-out call raises `ssh2rs.Timeout`.
@@ -127,6 +142,56 @@ with SSHClient.connect("example.com", 22) as client:
 
 - Each `exec` call resets the stored output. Before the first `exec`, both fields are empty strings.
 - `rc` is the exit code of the last command, or `None` if the command did not report one. After a timeout, `rc` is usually `None` because the command did not finish.
+
+## File transfer
+
+`upload(src, dst, timeout=None)` copies a local file to the remote host. `download(src, dst, timeout=None)` copies a remote file to the local host. Both use SFTP and are available on `SSHClient` and `AsyncSSHClient`.
+
+- `src` is the source path, `dst` is the destination path. Remote paths follow the server's SFTP rules.
+- `upload` creates or overwrites the remote file. `download` creates or overwrites the local file.
+- Both methods read the whole file into memory before writing. Large files need matching RAM.
+- `timeout` is in seconds. A timed-out call raises `ssh2rs.Timeout`.
+
+### Upload (sync)
+
+```python
+from pathlib import Path
+
+from ssh2rs import SSHClient
+
+with SSHClient.connect("example.com", 22, timeout=5.0) as client:
+    client.authenticate("user", "password")
+    client.upload("report.csv", "/tmp/report.csv", timeout=30.0)
+```
+
+### Download (sync)
+
+```python
+from ssh2rs import SSHClient
+
+with SSHClient.connect("example.com", 22, timeout=5.0) as client:
+    client.authenticate("user", "password")
+    client.download("/etc/hostname", "hostname.txt", timeout=30.0)
+```
+
+### Upload and download (async)
+
+```python
+import asyncio
+from pathlib import Path
+
+from ssh2rs import AsyncSSHClient
+
+
+async def main():
+    async with await AsyncSSHClient.connect("example.com", 22, timeout=5.0) as client:
+        await client.authenticate("user", "password")
+        await client.upload("report.csv", "/tmp/report.csv", timeout=30.0)
+        await client.download("/tmp/report.csv", "report_copy.csv", timeout=30.0)
+
+
+asyncio.run(main())
+```
 
 ## Install
 
@@ -168,8 +233,6 @@ Tests need a reachable SSH server set in `.env` (`SSH2RS_TEST_HOST`, `SSH2RS_TES
 ## Contribution
 
 Please feel free to present your idea by code example (pull request) or reported issues.
-
-**Warning:** before opening an issue or pull request, first create a discussion in the [Discussions](https://github.com/pchomik/ssh2rs/discussions) tab. Describe the idea or problem there first.
 
 - Issues: [github.com/pchomik/ssh2rs/issues](https://github.com/pchomik/ssh2rs/issues)
 - Repository: [github.com/pchomik/ssh2rs](https://github.com/pchomik/ssh2rs)
