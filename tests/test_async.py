@@ -179,16 +179,18 @@ async def test_download_missing_remote_file_raises_sftp(client: AsyncSSHClient, 
 
 
 async def test_upload_timeout_raises_timeout(client: AsyncSSHClient, tmp_path: Path, remote_path: str) -> None:
-    src = tmp_path / "src.txt"
-    src.write_text("data\n")
+    # Timer ticks are 1 ms; 64 MiB upload outlasts the first tick.
+    src = tmp_path / "src.bin"
+    src.write_bytes(bytes(64 * 1024 * 1024))
     with pytest.raises(ssh2rs.Timeout):
-        await client.upload(src=str(src), dst=remote_path, timeout=1e-6)
+        await client.upload(src=str(src), dst=remote_path, timeout=0.001)
 
 
 async def test_download_timeout_raises_timeout(client: AsyncSSHClient, tmp_path: Path, remote_path: str) -> None:
-    await client.exec(cmd=f"echo data > {remote_path}", timeout=EXECUTION_TIMEOUT)
+    # Timer ticks are 1 ms; 64 MiB download outlasts the first tick.
+    await client.exec(cmd=f"dd if=/dev/zero of={remote_path} bs=1M count=64 2>/dev/null", timeout=EXECUTION_TIMEOUT)
     with pytest.raises(ssh2rs.Timeout):
-        await client.download(src=remote_path, dst=str(tmp_path / "dst.txt"), timeout=1e-6)
+        await client.download(src=remote_path, dst=str(tmp_path / "dst.bin"), timeout=0.001)
 
 
 async def test_upload_after_disconnect_raises(client: AsyncSSHClient, tmp_path: Path) -> None:
